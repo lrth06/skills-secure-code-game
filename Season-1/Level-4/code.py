@@ -12,6 +12,7 @@ the tests.py again to recreate it.
 import sqlite3
 import os
 from flask import Flask, request
+import re
 
 ### Unrelated to the exercise -- Starts here -- Please ignore
 app = Flask(__name__)
@@ -227,17 +228,23 @@ class DB_CRUD_ops(object):
 
             res = "[METHOD EXECUTED] exec_user_script\n"
             res += "[QUERY] " + query + "\n"
-            if ';' in query:
-                res += "[SCRIPT EXECUTION]"
-                cur.executescript(query)
-                db_con.commit()
-            else:
-                cur.execute(query)
+            # Only allow simple SELECT queries with a single parameter
+            import re
+            select_pattern = r"^SELECT\s+.+\s+FROM\s+\w+\s+WHERE\s+\w+\s*=\s*'([^']*)';?$"
+            match = re.match(select_pattern, query.strip(), re.IGNORECASE)
+            if match:
+                param = match.group(1)
+                # Replace the parameter value with a placeholder
+                safe_query = re.sub(r"=\s*'[^']*'", "= ?", query.strip(), count=1)
+                cur.execute(safe_query, (param,))
                 db_con.commit()
                 query_outcome = cur.fetchall()
                 for result in query_outcome:
                     res += "[RESULT] " + str(result)
-            return res
+                return res
+            else:
+                res += "[ERROR] Only simple SELECT queries with a single quoted parameter are allowed."
+                return res
 
         except sqlite3.Error as e:
             print(f"ERROR: {e}")
