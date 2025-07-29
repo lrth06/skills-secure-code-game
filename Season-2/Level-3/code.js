@@ -15,7 +15,8 @@ const libxmljs = require("libxmljs");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { exec } = require("node:child_process");
+const { execFile } = require("node:child_process");
+const shellQuote = require("shell-quote");
 const app = express();
 
 app.use(bodyParser.json());
@@ -69,15 +70,28 @@ app.post("/ufo", (req, res) => {
         xmlDoc.toString().includes('SYSTEM "') &&
         xmlDoc.toString().includes(".admin")
       ) {
+        // Only allow certain commands for security
+        const ALLOWED_COMMANDS = ["ls", "cat", "echo"];
         extractedContent.forEach((command) => {
-          exec(command, (err, output) => {
-            if (err) {
-              console.error("could not execute command: ", err);
-              return;
-            }
-            console.log("Output: \n", output);
-            res.status(200).set("Content-Type", "text/plain").send(output);
-          });
+          // Parse command safely into argv array
+          const argv = shellQuote.parse(command);
+          if (
+            Array.isArray(argv) &&
+            argv.length > 0 &&
+            typeof argv[0] === "string" &&
+            ALLOWED_COMMANDS.includes(argv[0])
+          ) {
+            execFile(argv[0], argv.slice(1), (err, output) => {
+              if (err) {
+                console.error("could not execute command: ", err);
+                return;
+              }
+              console.log("Output: \n", output);
+              res.status(200).set("Content-Type", "text/plain").send(output);
+            });
+          } else {
+            res.status(403).send("Forbidden command");
+          }
         });
       } else {
         res
